@@ -3,6 +3,8 @@ from __future__ import division
 import serial
 import getopt
 import sys
+import time
+import RPi.GPIO as gpio
 
 # Rot2Prog implementation (c) 2020 C. Liebling W3PZ crlieb@swbell.net
 # Distributed under the GPLv2
@@ -10,6 +12,13 @@ import sys
 CmdStop = 0x0F
 CmdStatus = 0x1F
 CmdSet = 0x2F
+
+ElStep = 3 
+ElDirection = 5
+ElEnable = 7
+AzStep = 11
+AzDirection = 13
+AzEnable = 15
 
 def waitForCommand(serialPort):
         command = ""
@@ -53,30 +62,76 @@ def calcElevation(command):
         return elevation
 
 def stepAzCW(steps):
+        global AzStep
+        global AzDirection
+        global AzEnable
         print "Stepping azimuth clockwise: ", steps
-        pass
+        gpio.output(AzEnable, True)
+        gpio.output(AzDirection, False)
+        time.sleep(0.001)
+        for a in range(0, int(steps)):
+                gpio.output(AzStep, True)
+                time.sleep(0.001)
+                gpio.output(AzStep, False)
+                time.sleep(0.001)
+        gpio.output(AzEnable, False)
 
 def stepAzCCW(steps):
+        global AzStep
+        global AzDirection
+        global AzEnable
         print "Stepping azimuth counterclockwise: ", steps
-        pass
+        gpio.output(AzEnable, True)
+        gpio.output(AzDirection, True)
+        time.sleep(0.001)
+        for a in range(0, int(steps)):
+                gpio.output(AzStep, True)
+                time.sleep(0.001)
+                gpio.output(AzStep, False)
+                time.sleep(0.001)
+        gpio.output(AzEnable, False)
 
 def stepElCW(steps):
+        global ElStep
+        global ElDirection
+        global ElEnable
         print "Stepping elevation clockwise: ", steps
+        gpio.output(ElEnable, True)
+        gpio.output(ElDirection, False)
+        time.sleep(0.001)
+        for a in range(0, int(steps)):
+                gpio.output(ElStep, True)
+                time.sleep(0.001)
+                gpio.output(ElStep, False)
+                time.sleep(0.001)
+        gpio.output(ElEnable, False)
         pass
 
 def stepElCCW(steps):
+        global ElStep
+        global ElDirection
+        global ElEnable
         print "Stepping elevation counterclockwise: ", steps
+        gpio.output(ElEnable, True)
+        gpio.output(ElDirection, True)
+        time.sleep(0.001)
+        for a in range(0, int(steps)):
+                gpio.output(ElStep, True)
+                time.sleep(0.001)
+                gpio.output(ElStep, False)
+                time.sleep(0.001)
+        gpio.output(ElEnable, False)
         pass
 
 def moveRotatorTo(azimuth, newAzimuth, elevation, newElevation, stepsPerDegree):
-        azimuthDegrees = 0
-        elevationDegrees = 0
+        azimuthDegrees = 0.0
+        elevationDegrees = 0.0
         azimuthSteps = 0
         elevationSteps = 0
         azimuthDegrees = newAzimuth - azimuth
         elevationDegrees = newElevation - elevation
-        azimuthSteps = abs(azimuthDegrees * stepsPerDegree)
-        elevationSteps = abs(elevationDegrees * stepsPerDegree)
+        azimuthSteps = abs(azimuthDegrees * stepsPerDegree) * 60
+        elevationSteps = abs(elevationDegrees * stepsPerDegree) * 60
         if azimuthDegrees > 0.0:
                 stepAzCW(azimuthSteps)
         elif azimuthDegrees < 0.0:
@@ -113,6 +168,9 @@ def sendStatus(serialPort, azimuth, elevation, PH, PV):
         response = S + H1 + H2 + H3 + H4 + chr(int(PH)) + V1 + V2 + V3 +V4 + chr(int(PV)) + chr(0x20)
         serialPort.write(response)
 
+def stopRotator():
+        pass
+
 def printUsage():
         print """-h: This help menu
                  -p: path to serial device
@@ -123,6 +181,12 @@ def main():
         global CmdStop
         global CmdStatus
         global CmdSet
+        global ElStep 
+        global ElDirection
+        global ElEnable
+        global AzStep
+        global AzDirection
+        global AzEnable
         try:
                 opts, args = getopt.getopt(sys.argv[1:], "p:s:b:h")
         except getopt.GetoptError as err:
@@ -155,23 +219,28 @@ def main():
         PH = stepsPerDegree
         PV = stepsPerDegree
         serialPort = serial.Serial(serialDevice, baudrate = baudRate)
+        gpio.setmode(gpio.BOARD)
+        gpio.setup([ElStep, ElDirection, ElEnable], gpio.OUT)
+        gpio.setup([AzStep, AzDirection, AzEnable], gpio.OUT)
         while True:        
                 command = waitForCommand(serialPort)
                 print "Got a command"
                 print command
                 if checkCommand(command) == False:
                         continue
-                if getCmdType(command) == CmdStop:
+                elif getCmdType(command) == CmdStop:
                         stopRotator()
-                if getCmdType(command) == CmdStatus:
+                elif getCmdType(command) == CmdStatus:
                         sendStatus(serialPort, azimuth, elevation, PH, PV)
-                if getCmdType(command) == CmdSet:
+                elif getCmdType(command) == CmdSet:
                         print "Got a set command"
                         newAzimuth = calcAzimuth(command)
                         newElevation = calcElevation(command)
                         print "Setting Azimuth to ", newAzimuth
                         print "Setting Elevation to ", newElevation
                         moveRotatorTo(azimuth, newAzimuth, elevation, newElevation, stepsPerDegree)
+                        azimuth = newAzimuth
+                        elevation = newElevation
 
 if __name__ == "__main__":
         main()
