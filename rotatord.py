@@ -5,6 +5,8 @@ import getopt
 import sys
 import time
 import RPi.GPIO as gpio
+from Queue import Queue
+from threading import Thread
 
 # Rot2Prog implementation (c) 2020 C. Liebling W3PZ crlieb@swbell.net
 # Distributed under the GPLv2
@@ -66,7 +68,7 @@ def stepAzCW(steps):
         global AzDirection
         global AzEnable
         print "Stepping azimuth clockwise: ", steps
-        gpio.output(AzEnable, True)
+        #gpio.output(AzEnable, True)
         gpio.output(AzDirection, False)
         time.sleep(0.001)
         for a in range(0, int(steps)):
@@ -74,14 +76,14 @@ def stepAzCW(steps):
                 time.sleep(0.001)
                 gpio.output(AzStep, False)
                 time.sleep(0.001)
-        gpio.output(AzEnable, False)
+        #gpio.output(AzEnable, False)
 
 def stepAzCCW(steps):
         global AzStep
         global AzDirection
         global AzEnable
         print "Stepping azimuth counterclockwise: ", steps
-        gpio.output(AzEnable, True)
+        #gpio.output(AzEnable, True)
         gpio.output(AzDirection, True)
         time.sleep(0.001)
         for a in range(0, int(steps)):
@@ -89,30 +91,14 @@ def stepAzCCW(steps):
                 time.sleep(0.001)
                 gpio.output(AzStep, False)
                 time.sleep(0.001)
-        gpio.output(AzEnable, False)
+        #gpio.output(AzEnable, False)
 
 def stepElCW(steps):
         global ElStep
         global ElDirection
         global ElEnable
         print "Stepping elevation clockwise: ", steps
-        gpio.output(ElEnable, True)
-        gpio.output(ElDirection, False)
-        time.sleep(0.001)
-        for a in range(0, int(steps)):
-                gpio.output(ElStep, True)
-                time.sleep(0.001)
-                gpio.output(ElStep, False)
-                time.sleep(0.001)
-        gpio.output(ElEnable, False)
-        pass
-
-def stepElCCW(steps):
-        global ElStep
-        global ElDirection
-        global ElEnable
-        print "Stepping elevation counterclockwise: ", steps
-        gpio.output(ElEnable, True)
+        #gpio.output(ElEnable, True)
         gpio.output(ElDirection, True)
         time.sleep(0.001)
         for a in range(0, int(steps)):
@@ -120,8 +106,22 @@ def stepElCCW(steps):
                 time.sleep(0.001)
                 gpio.output(ElStep, False)
                 time.sleep(0.001)
-        gpio.output(ElEnable, False)
-        pass
+        #gpio.output(ElEnable, False)
+
+def stepElCCW(steps):
+        global ElStep
+        global ElDirection
+        global ElEnable
+        print "Stepping elevation counterclockwise: ", steps
+        #gpio.output(ElEnable, True)
+        gpio.output(ElDirection, False)
+        time.sleep(0.001)
+        for a in range(0, int(steps)):
+                gpio.output(ElStep, True)
+                time.sleep(0.001)
+                gpio.output(ElStep, False)
+                time.sleep(0.001)
+        #gpio.output(ElEnable, False)
 
 def moveRotatorTo(azimuth, newAzimuth, elevation, newElevation, stepsPerDegree):
         azimuthDegrees = 0.0
@@ -177,16 +177,57 @@ def printUsage():
                  -s: steps per degree that hamlib expects
                  -b baud rate\n"""
 
+def dequeueAndMove(moveQueue):
+        global AzStep
+        global AzDirection
+        global AzEnable
+        global ElStep
+        global ElDirection
+        global ElEnable
+        
+        gpio.setmode(gpio.BOARD)
+        gpio.setup([ElStep, ElDirection, ElEnable], gpio.OUT)
+        gpio.setup([AzStep, AzDirection, AzEnable], gpio.OUT)
+        gpio.output(AzEnable, True)
+        gpio.output(ElEnable, True)
+        print "Move thread started"
+        azimuthDegrees = 0.0
+        elevationDegrees = 0.0
+        azimuth = 0.0
+        newAzimuth = 0.0
+        elevation = 0.0
+        newElevation = 0.0
+        azimuthSteps = 0
+        elevationSteps = 0
+        while True:
+                newAzimuth, newElevation, stepsPerDegree = moveQueue.get()
+                azimuthDegrees = newAzimuth - azimuth
+                elevationDegrees = newElevation - elevation
+                azimuthSteps = abs(azimuthDegrees * stepsPerDegree) * 60
+                elevationSteps = abs(elevationDegrees * stepsPerDegree) * 60
+                print "Moving azimuth", azimuthSteps, "steps"
+                print "Moving elevation", elevationSteps, "steps"
+                if azimuthDegrees > 0.0:
+                        stepAzCW(azimuthSteps)
+                elif azimuthDegrees < 0.0:
+                        stepAzCCW(azimuthSteps)
+                else:
+                        pass
+                if elevationDegrees > 0.0:
+                        stepElCW(elevationSteps)
+                elif elevationDegrees < 0.0:
+                        stepElCCW(elevationSteps)
+                else:
+                        pass
+                azimuth = newAzimuth
+                elevation = newElevation
+
 def main():
         global CmdStop
         global CmdStatus
         global CmdSet
-        global ElStep 
-        global ElDirection
-        global ElEnable
-        global AzStep
-        global AzDirection
-        global AzEnable
+        moveQueue = Queue(maxsize=0)
+        moveThread = Thread(target=dequeueAndMove, args=(moveQueue,))
         try:
                 opts, args = getopt.getopt(sys.argv[1:], "p:s:b:h")
         except getopt.GetoptError as err:
@@ -218,10 +259,8 @@ def main():
                 sys.exit(2)
         PH = stepsPerDegree
         PV = stepsPerDegree
+        moveThread.start()
         serialPort = serial.Serial(serialDevice, baudrate = baudRate)
-        gpio.setmode(gpio.BOARD)
-        gpio.setup([ElStep, ElDirection, ElEnable], gpio.OUT)
-        gpio.setup([AzStep, AzDirection, AzEnable], gpio.OUT)
         while True:        
                 command = waitForCommand(serialPort)
                 print "Got a command"
@@ -238,7 +277,8 @@ def main():
                         newElevation = calcElevation(command)
                         print "Setting Azimuth to ", newAzimuth
                         print "Setting Elevation to ", newElevation
-                        moveRotatorTo(azimuth, newAzimuth, elevation, newElevation, stepsPerDegree)
+                        # moveRotatorTo(azimuth, newAzimuth, elevation, newElevation, stepsPerDegree)
+                        moveQueue.put([newAzimuth, newElevation, stepsPerDegree])
                         azimuth = newAzimuth
                         elevation = newElevation
 
