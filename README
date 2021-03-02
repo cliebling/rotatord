@@ -1,0 +1,73 @@
+rotatord.py
+
+
+Chuck Liebling, W3PZ
+charles.liebling@gmail.com
+
+This is a small implementation of an azimuth/elevation antenna rotator.
+It responds to serial commands formatted according to the rot2prog
+protocol.
+
+Why rot2prog?
+It is well documented, and most importantly support for it is complete
+in satellite tracking utilities like XPREDICT.
+
+Hardware requirements:
+Any Raspberry Pi should do.
+I used a Pi Zero.
+Why Pi? I know it's complete overkill. I could do this on a PIC16.
+A Pi Zero is a turn-key control solution that's $5. The hardware works
+and is completely done. It lets me write Python instead of poking registers
+in C and worrying about boilerplate code for the peripherals and all the yak
+shaving that would be necessary to stand up the dev environment.
+
+I/O Assignments:
+They are in the code. Look for the related comments.
+
+Runing this program:
+Make sure it has executable permissions
+./rotatord.py -s <steps per degree> -p <path to serial device> -b <baud rate>
+Of course, make sure the user has permission to access the serial port.
+TODO:
+Have the rotator thread exit gracefully
+Move to Python 3
+General clean-up
+
+Notes on operation:
+The rotator starts with the expectation that it is pointed NORTH at ZERO DEGREES elevation.
+Orient your antenna this way.
+
+Caveats:
+This is a completely OPEN LOOP control.
+There are NO LIMIT switches right now.
+What this means is if you command rotations that can possibly damage mechanisms,
+they'll happily run and destroy themselves.
+
+Why isn't this implemented yet? Time, for starters. This was a quick hackjob so I could
+use my IC9700 tri-band multimode radio to work low earth orbit satellites.
+
+It worked fabulously for that purpose.
+
+Hardware:
+I used an Arrow Anetnnas handheld cross-polzrized antenna.
+This antenna is designed to have a hand grip on it; you use a handheld transceiver
+and simply track the satellite manually. This makes it useful for "repeater" style
+FM satellites, but not so much transverter satellites which require larger radio gear.
+The very light antenna made it possible to make a very portable, light duty rotator.
+I simply mounted the handheld antenna to the rotator, and the gearboxes and motors 
+had zbsolutely no problem handling the antenna's moment of inertia.
+
+I made a two axis rotator out of:
+2x NEMA 17 stepper motors with 27:1 gear reduction
+2x NEMA 17 style stepper motor brackets
+2" aluminum angle stock
+Misc. hardware
+You'll probably design something better, so I won't go into detail.
+
+Ways you can improve things:
+Add limit switches and an E-stop
+Use a MEMS inclinometer and a compass module to have the system auto-zero.
+Make a robust rotator, i.e. don't rely on the motors and gearboxes to bear the load.
+Think a slew drive for the azimuth and another for elevation.
+This would allow for using a larger antenna, and if they're weatherproof, permanent
+installation as well.
