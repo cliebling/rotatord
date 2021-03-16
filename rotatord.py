@@ -30,9 +30,14 @@ import RPi.GPIO as gpio
 from Queue import Queue
 from threading import Thread
 
+
+# Define the rotator commands per rot2prog
 CmdStop = 0x0F
 CmdStatus = 0x1F
 CmdSet = 0x2F
+# There isn't an exit command in the rot2prog specification
+# 0x3F isn't specified in te rot2prog command set, so just define it as the quit command
+CmdQuit = 0x3F
 
 ElStep = 3 
 ElDirection = 5
@@ -220,6 +225,9 @@ def dequeueAndMove(moveQueue):
         elevationSteps = 0
         while True:
                 newAzimuth, newElevation, stepsPerDegree = moveQueue.get()
+                # Handle the exit condition and bail
+                if newAzimuth == 1 and newElevation == -1 and stepsPerDegree == -1:
+                        break
                 azimuthDegrees = newAzimuth - azimuth
                 elevationDegrees = newElevation - elevation
                 azimuthSteps = abs(azimuthDegrees * stepsPerDegree) * 60
@@ -240,6 +248,7 @@ def dequeueAndMove(moveQueue):
                         pass
                 azimuth = newAzimuth
                 elevation = newElevation
+        return
 
 def main():
         global CmdStop
@@ -252,6 +261,7 @@ def main():
         except getopt.GetoptError as err:
                 sys.exit(2)
         print "Going to parse options"
+        # Some defaults
         serialDevice = "/dev/ttyS0"
         baudRate = 9600
         stepsPerDegree = 1.0
@@ -300,6 +310,11 @@ def main():
                         moveQueue.put([newAzimuth, newElevation, stepsPerDegree])
                         azimuth = newAzimuth
                         elevation = newElevation
+                elif getCmdType(command) == CmdQuit:
+                        # Use all negative 1s as a terminate condition
+                        moveQueue.put([-1, -1, -1])
+                        break
+        return 0
 
 if __name__ == "__main__":
         main()
